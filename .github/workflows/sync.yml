@@ -1,20 +1,23 @@
 name: Tistory Auto Commit
 
-# 매일 자정(UTC 기준)에 실행되거나, 원할 때 수동으로 실행 가능
 on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
+# ★ 파일 자체에서 쓰기 권한을 강제로 부여합니다
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # ★ 최신 버전 업데이트 (노란색 경고 해결)
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5  # ★ 최신 버전 업데이트 (노란색 경고 해결)
       with:
         python-version: '3.9'
 
@@ -31,5 +34,11 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add .
-        # 변경사항이 있을 때만 커밋
-        git diff --quiet && git diff --staged --quiet || (git commit -m "📝 Update latest Tistory post" && git push)
+        
+        # 변경된 파일(새로운 글)이 있는지 확인 후 안전하게 커밋
+        if [ -n "$(git status --porcelain)" ]; then
+          git commit -m "📝 Update latest Tistory post"
+          git push
+        else
+          echo "✅ 변경된 내용(새로운 글)이 없습니다."
+        fi
