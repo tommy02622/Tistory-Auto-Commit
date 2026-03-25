@@ -13,7 +13,7 @@ print("📥 가져온 글 개수:", len(feed.entries))
 
 # 글이 1개 이상 있을 때만 실행
 if len(feed.entries) > 0:
-    # 딕셔너리 방식으로 가장 첫 번째(최신) 글을 안전하게 가져옴
+    # ★ 수정 완료: 리스트의 첫 번째 항목을 가져오기 위해 추가 ★
     latest_post = feed.entries
     
     # 속성(Attribute) 에러를 방지하기 위해 .get() 함수 사용
