@@ -11,12 +11,15 @@ STATE_FILE = "last_post.json"
 
 def load_state():
     if not os.path.exists(STATE_FILE):
-        return {}
+        return {"links": []}
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as file:
-            return json.load(file)
+            state = json.load(file)
+            if isinstance(state, dict) and isinstance(state.get("links"), list):
+                return state
+            return {"links": []}
     except json.JSONDecodeError:
-        return {}
+        return {"links": []}
 
 
 def save_state(state):
@@ -37,7 +40,7 @@ def get_post_date(entry):
 
 
 def already_recorded(link, file_name, state):
-    if state.get("link") == link:
+    if link in state.get("links", []):
         return True
     if os.path.exists(file_name):
         try:
@@ -57,39 +60,42 @@ def main():
         print("새 글이 없거나 RSS 피드가 비어 있습니다.")
         return
 
-    latest = feed.entries[0]
-    title = latest.get("title", "제목 없음")
-    link = latest.get("link", "")
-    published = latest.get("published", "")
-    post_date = get_post_date(latest)
-    file_name = f"{post_date:%Y-%m-%d}-post.md"
-
-    print(f"최신 글 제목: {title}")
-    print(f"작성 파일: {file_name}")
-
     state = load_state()
-    if already_recorded(link, file_name, state):
-        print("이미 기록된 글입니다. 새 파일을 생성하지 않습니다.")
-        return
+    created = 0
 
-    content = (
-        "## 오늘의 최신 포스팅\n"
-        f"**[{title}]({link})**\n\n"
-        f"- 발행일: {published}\n"
-    )
+    for entry in feed.entries:
+        title = entry.get("title", "제목 없음")
+        link = entry.get("link", "")
+        published = entry.get("published", "")
+        post_date = get_post_date(entry)
+        file_name = f"{post_date:%Y-%m-%d}-post.md"
 
-    with open(file_name, "w", encoding="utf-8") as file:
-        file.write(content)
+        if not link:
+            continue
+        if already_recorded(link, file_name, state):
+            continue
 
-    save_state(
-        {
-            "title": title,
-            "link": link,
-            "published": published,
-            "file": file_name,
-        }
-    )
-    print(f"{file_name} 파일 생성 완료!")
+        content = (
+            "## 오늘의 최신 포스팅\n"
+            f"**[{title}]({link})**\n\n"
+            f"- 발행일: {published}\n"
+        )
+
+        mode = "a" if os.path.exists(file_name) else "w"
+        with open(file_name, mode, encoding="utf-8") as file:
+            if mode == "a":
+                file.write("\n")
+            file.write(content)
+
+        state["links"].append(link)
+        created += 1
+        print(f"{file_name} 파일에 글 추가: {title}")
+
+    save_state(state)
+    if created == 0:
+        print("새로 기록할 글이 없습니다.")
+    else:
+        print(f"총 {created}개 글을 기록했습니다.")
 
 
 if __name__ == "__main__":
