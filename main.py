@@ -1,38 +1,96 @@
-import feedparser
 import datetime
+import json
 import os
+from email.utils import parsedate_to_datetime
 
-# 티스토리 RSS 주소
-RSS_URL = 'https://topgun-ai.tistory.com/rss'
+import feedparser
 
-# RSS 피드 파싱
-feed = feedparser.parse(RSS_URL)
+RSS_URL = "https://topgun-ai.tistory.com/rss"
+STATE_FILE = "last_post.json"
 
-print("🔍 피드 상태 확인:", feed.status if hasattr(feed, 'status') else "상태 코드 없음")
-print("📥 가져온 글 개수:", len(feed.entries))
 
-# 글이 1개 이상 있을 때만 실행
-if len(feed.entries) > 0:
-    # ★ 수정 완료: 리스트의 첫 번째 항목을 가져오기 위해 추가 ★
-    latest_post = feed.entries[0]
-    
-    # 속성(Attribute) 에러를 방지하기 위해 .get() 함수 사용
-    title = latest_post.get('title', '제목 없음')
-    link = latest_post.get('link', '')
-    published = latest_post.get('published', '')
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {}
+    try:
+        with open(STATE_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except json.JSONDecodeError:
+        return {}
 
-    print(f"🎯 타겟 글 제목: {title}")
 
-    # 오늘 날짜로 마크다운 파일명 생성
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
-    file_name = f"{today}-post.md"
+def save_state(state):
+    with open(STATE_FILE, "w", encoding="utf-8") as file:
+        json.dump(state, file, ensure_ascii=False, indent=2)
 
-    # 파일 내용 작성 (포스팅 제목과 링크)
-    content = f"## 📝 최근 포스팅\n\n**[{title}]({link})**\n\n- 발행일: {published}\n"
 
-    # 파일 저장 (이 동작이 깃허브에 커밋을 발생시켜 잔디를 심습니다)
-    with open(file_name, 'w', encoding='utf-8') as f:
-        f.write(content)
-    print(f"✅ {file_name} 파일 생성 완료!")
-else:
-    print("❌ 새로운 글을 찾을 수 없거나 블로그가 비어있습니다.")
+def get_post_date(entry):
+    if entry.get("published_parsed"):
+        return datetime.datetime(*entry.published_parsed[:6])
+    published = entry.get("published", "")
+    if published:
+        try:
+            return parsedate_to_datetime(published)
+        except (TypeError, ValueError):
+            pass
+    return datetime.datetime.now()
+
+
+def already_recorded(link, file_name, state):
+    if state.get("link") == link:
+        return True
+    if os.path.exists(file_name):
+        try:
+            with open(file_name, "r", encoding="utf-8") as file:
+                return link in file.read()
+        except OSError:
+            return False
+    return False
+
+
+def main():
+    feed = feedparser.parse(RSS_URL)
+    print("피드 상태:", feed.status if hasattr(feed, "status") else "상태 코드 없음")
+    print("가져온 글 개수:", len(feed.entries))
+
+    if not feed.entries:
+        print("새 글이 없거나 RSS 피드가 비어 있습니다.")
+        return
+
+    latest = feed.entries[0]
+    title = latest.get("title", "제목 없음")
+    link = latest.get("link", "")
+    published = latest.get("published", "")
+    post_date = get_post_date(latest)
+    file_name = f"{post_date:%Y-%m-%d}-post.md"
+
+    print(f"최신 글 제목: {title}")
+    print(f"작성 파일: {file_name}")
+
+    state = load_state()
+    if already_recorded(link, file_name, state):
+        print("이미 기록된 글입니다. 새 파일을 생성하지 않습니다.")
+        return
+
+    content = (
+        "## 오늘의 최신 포스팅\n"
+        f"**[{title}]({link})**\n\n"
+        f"- 발행일: {published}\n"
+    )
+
+    with open(file_name, "w", encoding="utf-8") as file:
+        file.write(content)
+
+    save_state(
+        {
+            "title": title,
+            "link": link,
+            "published": published,
+            "file": file_name,
+        }
+    )
+    print(f"{file_name} 파일 생성 완료!")
+
+
+if __name__ == "__main__":
+    main()
